@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Rozvrh učeben</title>
+        
+        <meta name="viewport" content="width=device-width, maximum-scale=1.0">
+        <link rel="icon" type="image/png" href="https://soptik.tech/img/favicon.png" sizes="64x64">
+	<link rel="stylesheet" href="https://soptik.tech/css/base.css">
+
+<style>
+li {
+  list-style-type: none;
+}
+</style>
+
+    </head>
+    <body>
+	<h1>Volné učebny</h1>
+	<p>Přístup je povolen všem studentům v pracovní dny od 7 do 20 hodin, nebo s dozorem učitele.</p>
+	<strong>Seminárky:</strong>
+	<p id="seminarRooms">Načítám...</p>
+	<strong>Počítačové učebny:</strong>
+	<p id="computerRooms"></p>
+	<h1>Učebny s omezeným přístupem</h1>
+	<p>Přístup je povolen pouze s dozorem učitele.</p>
+	<p id="restrictedRooms">
+	</p>
+    </body>
+
+    <script>
+		seminarRooms = document.getElementById('seminarRooms');
+		computerRooms = document.getElementById('computerRooms');
+		restrictedRooms = document.getElementById('restrictedRooms');
+		loadRestricted = true;
+
+		function stringifyTimeDiff(num) {
+		    let minutes = num/1000/60;
+
+		    let hours = minutes/60;
+		    let remMinutes = minutes%60;
+
+			if (Math.floor(hours) != 0 && Math.floor(remMinutes) != 0)
+				return `${Math.floor(hours)}h ${Math.floor(remMinutes)}m`;
+			else if (Math.floor(hours) != 0)
+				return `${Math.floor(hours)}h`;
+			else
+				return `${Math.floor(remMinutes)}m`;
+		}
+
+		function getHoursProgress(time) {
+			let timeNow = new Date();
+			return Math.max(0, (time.getHours() * 60 + time.getMinutes()) - (timeNow.getHours() * 60 + timeNow.getMinutes()));
+		}
+
+		function handleResponse(response) {
+		  if (response.status >= 200 && response.status < 400) {
+			// Success!
+			json = JSON.parse(response.response);
+
+			// Sort by name
+			json.sort(function(a,b){return a.room.localeCompare(b.room);});
+
+			seminarRooms.innerHTML = "<ul>";
+			computerRooms.innerHTML = "<ul>";
+			if(loadRestricted) restrictedRooms.innerHTML = "<ul>";
+
+			let timeNow = new Date();
+			var seenRooms = new Set();
+
+			progress_max = Math.max(22*60 - (timeNow.getHours() * 60 + timeNow.getMinutes()), 0);
+
+			json.forEach((el, idx) => {
+			    for(let i = 0; i < el.availability.length; i++) {
+					let av = el.availability[i];
+					let fromDate = new Date(av.from);
+					let toDate = new Date(av.to);
+
+					if ((toDate - fromDate)/1000/60 <= 15) continue;
+					if ((fromDate - timeNow)/1000/60 >= 30) continue;
+					if (toDate < timeNow) continue;
+					
+					let toAppend = null;
+					if(el.type == "seminar") toAppend = seminarRooms;
+					else if (el.type == "computer") toAppend = computerRooms;
+					else toAppend = restrictedRooms;
+
+					appendHtml = ""
+					if ((toDate - timeNow)/1000/60 >= 15) {
+						appendHtml += "<li><strong>" + el.room + "</strong>";
+						
+						if (fromDate > timeNow) {
+							appendHtml += " (volno za " + stringifyTimeDiff(fromDate - timeNow) + ", potom volno "
+								+ stringifyTimeDiff(toDate - fromDate) + ")</li>";
+						} else {
+							appendHtml += " (volno ještě " + stringifyTimeDiff(toDate - timeNow) + ")</li>";
+
+						}
+						/*"<progress max=\""+progress_max+"\" value=\""+getHoursProgress(toDate)+"\"/>*/
+					}
+
+					toAppend.innerHTML += appendHtml;
+					
+					break;
+				}
+			})
+
+			seminarRooms.innerHTML += "</ul>";
+			computerRooms.innerHTML += "</ul>";
+			if(loadRestricted) restrictedRooms.innerHTML += "</ul>";
+		  } else {
+			// We reached our target server, but it returned an error
+			seminarRooms.innerText = "API returned an error."
+		  }
+		}
+
+		function sendRequest() {
+			var resultPar = document.getElementById('seminarRooms');
+			var request = new XMLHttpRequest();
+			request.open('GET', 'https://soptik.tech/api/freeRooms?includeTeacherRooms=' + (loadRestricted ? 'true' : 'false'), true);
+
+			request.onload = function() {
+				handleResponse(this);
+			};
+
+			request.onerror = function() {
+			  // There was a connection error of some sort
+			  resultPar.innerText = "Connection failed."
+			};
+
+			request.send();
+		}
+
+		//function loadAllRooms() {
+		//	loadRestricted = true;
+		//	document.getElementById('loadAllButton').innerText = "Načítám...";
+		//	sendRequest();
+		//}
+
+		//document.getElementById('loadAllButton').onclick = loadAllRooms;
+
+		sendRequest();
+	</script>
+</html>
